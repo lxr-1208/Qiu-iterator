@@ -1,11 +1,37 @@
 #include "mainwindow.h"
 
 #include <QApplication>
-
+#include <QMap>
+#include <QFile>
+#include <QLabel>
+#include <QDebug>
+#include <QTextStream>
+#include <QMessageBox>
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-    imageViewer *view = new imageViewer;
-    view->show();
+    QFile file(":/quetopage.txt");
+    if (!file.open(QIODevice::ReadOnly)) {
+       QMessageBox::information(nullptr,"","sdfs");
+       return 0; // 或者处理错误
+   }
+    QTextStream in(&file);
+    in.setCodec("UTF-8");
+    QString line;
+    while (!in.atEnd()) {
+        line = in.readLine();
+        QStringList parts = line.split(' ');
+        QString name = parts[2];
+        int page = parts[6].toInt();
+        int y = parts[7].toInt();
+        mp[name]=page;
+    }
+
+    file.close();
+
+    myScene *scene = new myScene;
+    imageViewer *viewer = new imageViewer(scene);
+    viewer->show();
+
     return a.exec();
 }

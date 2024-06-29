@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>quetopage.txt</file>
+    </qresource>
+</RCC>
