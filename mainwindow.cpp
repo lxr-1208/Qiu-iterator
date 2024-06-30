@@ -4,16 +4,21 @@
 #include <QDebug>
 #include <QEvent>
 #include <QSpinBox>
+#include <QComboBox>
 #include <QScrollBar>
 #include <QShortcut>
 #include <QInputDialog>
 #include <QDir>
 #include <QtGlobal>
+#include <QVBoxLayout>
+#include <QPushButton>
+
 
 QSize Size(1000,1414);
 QMap<QString,int> mp;
-imageViewer::imageViewer(myScene *sce,QGraphicsView *parent ):QGraphicsView(parent),scene(sce)
+imageViewer::imageViewer(myScene *sce,TAG *Tag,QGraphicsView *parent ):QGraphicsView(parent),scene(sce)
 {
+    tag=Tag;
     setScene(scene);
     resize(Size);
     currentPage = 1;
@@ -27,20 +32,35 @@ imageViewer::imageViewer(myScene *sce,QGraphicsView *parent ):QGraphicsView(pare
     QShortcut *shortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_F), this);
     QObject::connect(shortcut, &QShortcut::activated, this, &imageViewer::onFind);
 
+    QShortcut *shortcut1 = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_H), this);
+    QObject::connect(shortcut1, &QShortcut::activated, this, &imageViewer::highlight);
+
+    QShortcut *shortcut2 = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_S), this);
+    QObject::connect(shortcut2, &QShortcut::activated, this, &imageViewer::searchtag);
+
+    QShortcut *shortcut3 = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_A), this);
+    QObject::connect(shortcut3, &QShortcut::activated, this, &imageViewer::addtag);
+
+    QShortcut *shortcut4 = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_N), this);
+    QObject::connect(shortcut4, &QShortcut::activated, this, &imageViewer::copy);
+
     centerOn(Size.width()/2,Size.height()/2);
 
     spinbox->blockSignals(true);
     spinbox->setValue(1);
     spinbox->blockSignals(false);
+
+    resize(1000,800);
 }
 imageViewer::~imageViewer()
 {
-
+    scene->del(currentPage);
 }
 void imageViewer::resizeEvent(QResizeEvent *event)
 {
     int w = event->oldSize().width();
     int ww = event->size().width();
+//    qDebug()<<w<<" "<<ww<<endl;
     qreal s=1.0*ww/w;
     if(w!=-1)
     {
@@ -49,22 +69,25 @@ void imageViewer::resizeEvent(QResizeEvent *event)
 }
 void imageViewer::onFind()
 {
-    QString input = QInputDialog::getText(this, "输入框","请输入想跳转的题号：");
-    qDebug()<<input<<endl;
+    bool ok;
+    QString input = QInputDialog::getText(this, "输入框","请输入想跳转的题号：\n参考:7.1.1定理1 8.2.2例2",QLineEdit::Normal,"",&ok);
+    if(ok==false) return;
+//    qDebug()<<input<<endl;
     if(mp.contains(input)==false)
     {
-        QMessageBox::information(this,"Error","格式错误，参考：7.1.1定理1",QMessageBox::Ok);
+        QMessageBox::information(this,"Error","格式错误或者对象不存在，参考：7.1.1定理1",QMessageBox::Ok);
         return;
     }
-    sons[++cntSon] = new imageViewer(scene);
-    sons[cntSon]->turnto(mp[input]+1);
-    sons[cntSon]->move(50,50);
+    sons[++cntSon] = new imageViewer(scene,tag);
+    sons[cntSon]->turnto1(mp[input]);
+    QPoint pos = mapToGlobal(QPoint(0,0));
+    sons[cntSon]->move(pos.x()+50,pos.y()+50);
     sons[cntSon]->show();
 }
 void imageViewer::turnto(int i)
 {
     scrollblock = true;
-    centerOn(Size.width()/2,Size.height()*(i-1)+707);
+    centerOn(Size.width()/2,Size.height()*(i-1)+size().height()/2);
     scrollblock = false;
     if(currentPage!=i)
     {
@@ -104,12 +127,51 @@ void imageViewer::scrollContentsBy(int dx, int dy)
         scene->myUpdate(t);
     }
     currentPage = t;
-    qDebug() << y<<" Currentpage:"<<currentPage;
+//    qDebug() << y<<" Currentpage:"<<currentPage;
     spinbox->blockSignals(true);
     spinbox->setValue(currentPage);
     spinbox->blockSignals(false);
     QGraphicsView::scrollContentsBy(dx,dy);
 
+}
+void imageViewer::closeEvent(QCloseEvent *event)
+{
+//    qDebug()<<"DELETE";
+    delete this;
+}
+void imageViewer::highlight()
+{
+     bool ok;
+     QString input = QInputDialog::getText(this, "输入框","你想标注哪道例题上：",QLineEdit::Normal,"",&ok);
+     if(ok==false) return;
+     int y = mp[input];
+     FluorescentRectItem *high = new FluorescentRectItem(QRect(150,y,50,25),nullptr);
+     high->setZValue(1);
+     scene->addItem(high);
+}
+void imageViewer::addtag()
+{
+    bool ok;
+    QString input = QInputDialog::getText(this, "输入框","您要在本页插入书签并备注为：",QLineEdit::Normal,"",&ok);
+    if(ok==false) return;
+    tag->addtag(input,currentPage);
+}
+void imageViewer::searchtag()
+{
+    int page = tag->searchtag();
+    if(page==-1)
+    {
+        QMessageBox::information(nullptr,"Error","没有找到该备注");
+    }
+    else spinbox->setValue(page);
+}
+void imageViewer::copy()
+{
+    sons[++cntSon] = new imageViewer(scene,tag);
+    sons[cntSon]->turnto(currentPage);
+    QPoint pos = mapToGlobal(QPoint(0,0));
+    sons[cntSon]->move(pos.x()+50,pos.y()+50);
+    sons[cntSon]->show();
 }
 myScene::myScene()
 {
@@ -125,7 +187,7 @@ void myScene::del(int page)
 {
     for(int i=qMax(-1,-page+1);i<=1;i++)
     {
-        qDebug()<<"del:"<<i+page<<endl;
+//        qDebug()<<"del:"<<i+page<<endl;
         cnt[i+page]--;
         if(cnt[i+page]!=0) continue;
         item[page+i]->setPixmap(QPixmap());
@@ -135,16 +197,57 @@ void myScene::del(int page)
 void myScene::myUpdate(int page)
 {
     QDir cur = QDir::currentPath();
+    cur.cdUp();
     for(int i=qMax(-1,-page+1);i<=1;i++)
     {
-        qDebug()<<"add:"<<i+page<<endl;
+//        qDebug()<<"add:"<<i+page<<endl;
         cnt[i+page]++;
         if(cnt[i+page]!=1) continue;
-        QPixmap pixmap(QString(cur.path()+"/gddsImage/%1.png").arg(page+i-1));
-        pixmap = pixmap.scaled(1000,1414,Qt::KeepAspectRatioByExpanding,Qt::SmoothTransformation);
+        QPixmap pixmap(QString(cur.path()+"/NewTry/gddsImage/%1.png").arg(page+i-1));
+        pixmap = pixmap.scaled(Size.width(),Size.height(),Qt::KeepAspectRatioByExpanding,Qt::SmoothTransformation);
         item[page+i]->setPixmap(pixmap);
+
         addItem(item[page+i]);
         item[page+i]->setPos(0,Size.height()*(page+i-1));
     }
 }
 
+QString TAG::showComboBoxDialog()
+{
+    if (exec() == QDialog::Accepted) {
+        return getSelectedItem();
+    }
+    return QString();
+}
+
+TAG::TAG():comboBox(new QComboBox(this))
+{
+    QVBoxLayout *layout = new QVBoxLayout(this);
+    QPushButton *okButton = new QPushButton(tr("确定"), this);
+    QPushButton *cancelButton = new QPushButton(tr("取消"), this);
+
+    layout->addWidget(comboBox);
+    layout->addWidget(okButton);
+    layout->addWidget(cancelButton);
+
+    connect(okButton, &QPushButton::clicked, this, &TAG::accept);
+    connect(cancelButton, &QPushButton::clicked, this, &TAG::reject);
+    setLayout(layout);
+    setWindowTitle("查找标签");
+    resize(400,200);
+}
+void TAG::addtag(QString input,int page)
+{
+    beizhu.append(input);
+    mp[input]=page;
+    comboBox->addItem(input);
+}
+int TAG::searchtag()
+{
+    QString input=showComboBoxDialog();
+    if(mp.contains(input))
+    {
+        return mp[input];
+    }
+    else return -1;
+}
